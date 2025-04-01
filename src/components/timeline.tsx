@@ -1,5 +1,5 @@
 import { QueryKey, useInfiniteQuery } from '@tanstack/react-query'
-import { groupBy, throttle } from 'lodash'
+import { groupBy } from 'lodash'
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CustomItemComponentProps, VList, VListHandle } from 'virtua'
 
@@ -37,23 +37,14 @@ export const Timeline = () => {
   const [activeIndex, setActiveIndex] = useState(0)
   const [isShifting, setIsShifting] = useState(false)
 
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetching,
-    isFetchingNextPage,
-    isFetchingPreviousPage,
-    hasPreviousPage,
-    fetchPreviousPage,
-    isLoading,
-  } = useInfiniteQuery<TimelineResponse, Error, InfiniteTimelineQueryResult, QueryKey, number>({
-    queryKey: ['timeline'],
-    queryFn: ({ pageParam = 0 }) => fetchTimelinePage(pageParam, 100),
-    getNextPageParam: (lastPage) => lastPage.nextPage,
-    getPreviousPageParam: (firstPage) => firstPage.prevPage,
-    initialPageParam: 5,
-  })
+  const { data, fetchNextPage, hasNextPage, isFetching, hasPreviousPage, fetchPreviousPage, isLoading } =
+    useInfiniteQuery<TimelineResponse, Error, InfiniteTimelineQueryResult, QueryKey, number>({
+      queryKey: ['timeline'],
+      queryFn: ({ pageParam = 0 }) => fetchTimelinePage(pageParam, 100),
+      getNextPageParam: (lastPage) => lastPage.nextPage,
+      getPreviousPageParam: (firstPage) => firstPage.prevPage,
+      initialPageParam: 5,
+    })
 
   const StickyItem = forwardRef<HTMLDivElement, CustomItemComponentProps>(({ children, index, style }, ref) => {
     return (
@@ -106,35 +97,32 @@ export const Timeline = () => {
     return timelineRows.map(({ type }, index) => (type === 'header' ? index : -1)).filter((i) => i !== -1)
   }, [timelineRows])
 
-  const handleListScroll = useCallback(
-    throttle(async () => {
-      if (!listRef.current) return
+  const handleListScroll = useCallback(async () => {
+    if (!listRef.current) return
 
-      const start = listRef.current.findStartIndex()
+    const start = listRef.current.findStartIndex()
 
-      const activeStickyIndex = [...stickyIndexes].reverse().find((index) => start >= index)!
+    const activeStickyIndex = [...stickyIndexes].reverse().find((index) => start >= index)!
 
-      setActiveIndex(activeStickyIndex)
+    setActiveIndex(activeStickyIndex)
 
-      if (isFetching) {
-        return
-      }
+    if (isFetching) {
+      return
+    }
 
-      const count = timelineRows.length
-      const isNearTop = endFetchedCountRef.current < count && listRef.current.findEndIndex() + 10 > count
-      const isNearBottom = startFetchedCountRef.current < count && listRef.current.findStartIndex() - 10 < 0
+    const count = timelineRows.length
+    const isNearTop = endFetchedCountRef.current < count && listRef.current.findEndIndex() + 10 > count
+    const isNearBottom = startFetchedCountRef.current < count && listRef.current.findStartIndex() - 10 < 0
 
-      if (isNearTop && hasNextPage) {
-        endFetchedCountRef.current = count
-        await fetchNextPage()
-      } else if (isNearBottom && hasPreviousPage) {
-        startFetchedCountRef.current = count
-        setIsShifting(true)
-        await fetchPreviousPage()
-      }
-    }, 100),
-    [fetchNextPage, fetchPreviousPage, hasNextPage, hasPreviousPage, isFetching, stickyIndexes, timelineRows.length],
-  )
+    if (isNearTop && hasNextPage) {
+      endFetchedCountRef.current = count
+      await fetchNextPage()
+    } else if (isNearBottom && hasPreviousPage) {
+      startFetchedCountRef.current = count
+      setIsShifting(true)
+      await fetchPreviousPage()
+    }
+  }, [fetchNextPage, fetchPreviousPage, hasNextPage, hasPreviousPage, isFetching, stickyIndexes, timelineRows.length])
 
   const items = useMemo(
     () =>
@@ -144,13 +132,14 @@ export const Timeline = () => {
           const isFirst = index === 0
           const isToday = getIsToday(item?.label ?? '')
           const label = item?.label ?? ''
+          const key = `${item.type}-${label}`
 
           return (
             <div
               {...(isRecent && {
                 id: 'timeline-recent',
               })}
-              key={index}
+              key={key}
               data-index={index}
               data-recent={isRecent}
               className={cn({
@@ -169,9 +158,10 @@ export const Timeline = () => {
         if (item?.type === 'item' && item?.data) {
           const data = item?.data
           const isBeforeHeader = timelineRows[index + 1]?.type === 'header'
+          const key = `${item.type}-${data.id}-${data.formatted_t_date}`
 
           return (
-            <div key={index} data-index={index}>
+            <div key={key} data-index={index}>
               <div
                 className={cn('px-4 py-1', {
                   'after:absolute after:inset-x-0 after:bottom-2 after:h-px after:bg-border pb-6': isBeforeHeader,
@@ -190,6 +180,7 @@ export const Timeline = () => {
 
   useEffect(() => {
     if (!isLoading && timelineRows.length > 0) {
+      console.log('first load complete')
       setIsShifting(true)
       fetchPreviousPage()
     }
@@ -197,9 +188,18 @@ export const Timeline = () => {
 
   useEffect(() => {
     if (!isFetching && isShifting) {
+      console.log('shifting complete')
       setIsShifting(false)
     }
   }, [timelineRows.length])
+
+  console.log({
+    rawData,
+    groupedData,
+    timelineRows,
+    activeIndex,
+    isShifting,
+  })
 
   return (
     <div className="absolute inset-0 overflow-y-auto">
